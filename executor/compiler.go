@@ -28,6 +28,16 @@ import (
 	"golang.org/x/net/context"
 )
 
+const expensive_plan_error = "expensive to execute"
+
+type expensiveLevel int
+
+const (
+	notExpensive expensiveLevel = iota
+	expensive
+	tooExpensive
+)
+
 // Compiler compiles an ast.StmtNode to a physical plan.
 type Compiler struct {
 	Ctx sessionctx.Context
@@ -51,12 +61,14 @@ func (c *Compiler) Compile(ctx context.Context, stmtNode ast.StmtNode) (*ExecStm
 	}
 
 	CountStmtNode(stmtNode, c.Ctx.GetSessionVars().InRestrictedSQL)
-	isExpensive := logExpensiveQuery(stmtNode, finalPlan)
-
+	planExpensiveLevel := logExpensiveQuery(stmtNode, finalPlan)
+	if planExpensiveLevel >= tooExpensive {
+		return nil, errors.Trace(errors.New(expensive_plan_error))
+	}
 	return &ExecStmt{
 		InfoSchema: infoSchema,
 		Plan:       finalPlan,
-		Expensive:  isExpensive,
+		Expensive:  planExpensiveLevel > notExpensive,
 		Cacheable:  plan.Cacheable(stmtNode),
 		Text:       stmtNode.Text(),
 		StmtNode:   stmtNode,
@@ -64,9 +76,9 @@ func (c *Compiler) Compile(ctx context.Context, stmtNode ast.StmtNode) (*ExecStm
 	}, nil
 }
 
-func logExpensiveQuery(stmtNode ast.StmtNode, finalPlan plan.Plan) (expensive bool) {
-	expensive = isExpensiveQuery(finalPlan)
-	if !expensive {
+func logExpensiveQuery(stmtNode ast.StmtNode, finalPlan plan.Plan) (expensiveLvl expensiveLevel) {
+	expensiveLvl = queryExpensiveLevel(finalPlan)
+	if expensiveLvl < expensive {
 		return
 	}
 
@@ -79,41 +91,47 @@ func logExpensiveQuery(stmtNode ast.StmtNode, finalPlan plan.Plan) (expensive bo
 	return
 }
 
-func isExpensiveQuery(p plan.Plan) bool {
+func queryExpensiveLevel(p plan.Plan) expensiveLevel {
 	switch x := p.(type) {
 	case plan.PhysicalPlan:
-		return isPhysicalPlanExpensive(x)
+		return physicalPlanExpensiveLevel(x)
 	case *plan.Execute:
-		return isExpensiveQuery(x.Plan)
+		return queryExpensiveLevel(x.Plan)
 	case *plan.Insert:
 		if x.SelectPlan != nil {
-			return isPhysicalPlanExpensive(x.SelectPlan)
+			return physicalPlanExpensiveLevel(x.SelectPlan)
 		}
 	case *plan.Delete:
 		if x.SelectPlan != nil {
-			return isPhysicalPlanExpensive(x.SelectPlan)
+			return physicalPlanExpensiveLevel(x.SelectPlan)
 		}
 	case *plan.Update:
 		if x.SelectPlan != nil {
-			return isPhysicalPlanExpensive(x.SelectPlan)
+			return physicalPlanExpensiveLevel(x.SelectPlan)
 		}
 	}
-	return false
+	return notExpensive
 }
 
-func isPhysicalPlanExpensive(p plan.PhysicalPlan) bool {
+func physicalPlanExpensiveLevel(p plan.PhysicalPlan) expensiveLevel {
+	var expensiveLevel = notExpensive
 	expensiveRowThreshold := int64(config.GetGlobalConfig().Log.ExpensiveThreshold)
+	tooExpensiveRowThreshold := int64(config.GetGlobalConfig().Log.TooExpensiveThreshold)
 	if p.StatsInfo().Count() > expensiveRowThreshold {
-		return true
+		expensiveLevel = expensive
+	}
+	if tooExpensiveRowThreshold > 0 && p.StatsInfo().Count() > tooExpensiveRowThreshold {
+		expensiveLevel = tooExpensive
 	}
 
 	for _, child := range p.Children() {
-		if isPhysicalPlanExpensive(child) {
-			return true
+		childExpensiveLevel := physicalPlanExpensiveLevel(child)
+		if childExpensiveLevel > expensiveLevel {
+			expensiveLevel = childExpensiveLevel
 		}
 	}
 
-	return false
+	return expensiveLevel
 }
 
 // CountStmtNode records the number of statements with the same type.
