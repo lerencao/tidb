@@ -344,6 +344,9 @@ func validateConfig() {
 		log.Errorf("log max-size should not be larger than %d MB", config.MaxLogFileSize)
 		os.Exit(-1)
 	}
+	if cfg.Log.TooExpensiveThreshold != 0 && cfg.Log.TooExpensiveThreshold < cfg.Log.ExpensiveThreshold {
+		log.Errorf("if enabled, log too expensive threshold should not be less than expensive threshold")
+	}
 	if cfg.XProtocol.XServer {
 		log.Error("X Server is not available")
 		os.Exit(-1)
