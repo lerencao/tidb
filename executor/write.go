@@ -32,6 +32,7 @@ import (
 	"github.com/pingcap/tidb/util/chunk"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
+	"reflect"
 )
 
 var (
@@ -1463,9 +1464,8 @@ func (e *InsertExec) onDuplicateUpdate(row []types.Datum, h int64, cols []*expre
 	}
 	for _, c := range e.Table.Cols() {
 		if err := c.CheckNotNull(data[c.Offset]); err != nil {
-			colInfoStr, _ := json.Marshal(colInfos)
-			log.Infof("writeable column: %v", string(colInfoStr))
-			log.Warningf("Check Not Null, %v", err)
+			colInfoStr, _ := json.Marshal(c.ColumnInfo)
+			log.Warningf("Check Not Null, %v, datavalue: %v, defaultvalue: %v(%v)", colInfoStr, data[c.Offset], c.DefaultValue, reflect.TypeOf(c.DefaultValue))
 		}
 	}
 
