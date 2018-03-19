@@ -1465,7 +1465,11 @@ func (e *InsertExec) onDuplicateUpdate(row []types.Datum, h int64, cols []*expre
 	for _, c := range e.Table.Cols() {
 		if err := c.CheckNotNull(data[c.Offset]); err != nil {
 			colInfoStr, _ := json.Marshal(c.ColumnInfo)
-			log.Warningf("Check Not Null, %v, datavalue: %v, defaultvalue: %v(%v)", colInfoStr, data[c.Offset], c.DefaultValue, reflect.TypeOf(c.DefaultValue))
+			log.Warningf("Check Not Null, %v,datalength: %v, datavalue: %v, defaultvalue: %v(%v), tableclass: %v",
+				string(colInfoStr),
+				len(data),
+				data[c.Offset],
+				c.OriginDefaultValue, reflect.TypeOf(c.OriginDefaultValue), reflect.TypeOf(e.Table))
 		}
 	}
 
