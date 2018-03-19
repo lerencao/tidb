@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"encoding/json"
 	"github.com/juju/errors"
 	"github.com/pingcap/tidb/ast"
 	"github.com/pingcap/tidb/expression"
@@ -1451,10 +1452,23 @@ func (e *InsertValues) adjustAutoIncrementDatum(row []types.Datum, i int, c *tab
 // onDuplicateUpdate updates the duplicate row.
 // TODO: Report rows affected and last insert id.
 func (e *InsertExec) onDuplicateUpdate(row []types.Datum, h int64, cols []*expression.Assignment) error {
-	data, err := e.Table.RowWithCols(e.ctx, h, e.Table.WritableCols())
+	writableCols := e.Table.WritableCols()
+	colInfos := make([]*model.ColumnInfo, len(writableCols))
+	for e := range writableCols {
+		colInfos[e] = writableCols[e].ColumnInfo
+	}
+	data, err := e.Table.RowWithCols(e.ctx, h, writableCols)
 	if err != nil {
 		return errors.Trace(err)
 	}
+	for _, c := range e.Table.Cols() {
+		if err := c.CheckNotNull(data[c.Offset]); err != nil {
+			colInfoStr, _ := json.Marshal(colInfos)
+			log.Infof("writeable column: %v", string(colInfoStr))
+			log.Warningf("Check Not Null, %v", err)
+		}
+	}
+	return nil
 
 	// See http://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_values
 	e.ctx.GetSessionVars().CurrInsertValues = types.DatumRow(row)
