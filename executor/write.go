@@ -1468,7 +1468,6 @@ func (e *InsertExec) onDuplicateUpdate(row []types.Datum, h int64, cols []*expre
 			log.Warningf("Check Not Null, %v", err)
 		}
 	}
-	return nil
 
 	// See http://dev.mysql.com/doc/refman/5.7/en/miscellaneous-functions.html#function_values
 	e.ctx.GetSessionVars().CurrInsertValues = types.DatumRow(row)
