@@ -344,6 +344,10 @@ func validateConfig() {
 		log.Errorf("log max-size should not be larger than %d MB", config.MaxLogFileSize)
 		os.Exit(-1)
 	}
+	// the threshold must be greater than 10000
+	if cfg.Log.ExpensiveThreshold < 10000 {
+		cfg.Log.ExpensiveThreshold = 10000
+	}
 	if cfg.Log.TooExpensiveThreshold != 0 && cfg.Log.TooExpensiveThreshold < cfg.Log.ExpensiveThreshold {
 		log.Errorf("if enabled, log too expensive threshold should not be less than expensive threshold")
 	}
